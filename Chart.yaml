@@ -1,0 +1,15 @@
+apiVersion: v2
+name: {microservice_name}
+appVersion: auto
+description: A Helm chart to deploy app into {project_name}
+type: application
+version: 0.0.1
+
+keywords:
+  - {project_name}
+  - {microservice_name}
+
+engine: gotpl
+
+maintainers:
+  - name: {organization}

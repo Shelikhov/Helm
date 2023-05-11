@@ -1,0 +1,159 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  labels: {{- include "chartLabels" . | nindent 4 }}
+    app: {{ include "appName" . }}
+    chart: {{ template "appChart" . }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  name: {{ include "appName" . }}
+spec:
+  replicas: {{ .Values.pod.replicas | default 1 }}
+  revisionHistoryLimit: {{ .Values.pod.revisionLimit | default 10 }}
+  progressDeadlineSeconds: {{ .Values.pod.progressDeadlineSeconds | default 21600 }}
+  selector:
+    matchLabels:
+      app: {{ include "appName" . }}
+      release: {{ .Release.Name | quote }}
+  strategy:
+    rollingUpdate:
+      maxSurge: {{ .Values.pod.strategy.maxSurge | default "25%" }}
+      maxUnavailable: {{ .Values.pod.strategy.maxUnavailable | default "25%" }}
+    type: {{ .Values.pod.strategy.type | default "RollingUpdate" }}
+  template:
+    metadata:
+      labels: {{- include "chartLabels" . | nindent 8 }}
+        app: {{ include "appName" . }}
+        chart: {{ template "appChart" . }}
+        release: {{ .Release.Name | quote }}
+      annotations:
+        rollme: {{ randAlphaNum 5 | quote }}
+    spec: 
+      {{- if .Values.volumes }}
+      volumes: {{- include "volumes" . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "appName" . }}
+          env:
+            - name: TZ
+              value: Europe/Moscow
+            - name: LANG
+              value: ru_RU.UTF-8
+          image: {{ include "imagePath" (list $ . "app") }}
+          imagePullPolicy: Always
+          volumeMounts: {{- include "volumeMount" (list $ . "app") }}
+          ports:
+            - containerPort: {{ .Values.containers.app.port | default 8080 }}
+              protocol: {{ .Values.containers.app.protocol | default "TCP" }}
+          {{- if .Values.containers.app.diagnosticMode.enabled }}
+          livenessProbe: {{- toYaml .Values.containers.app.livenessProbe | nindent 12 }}
+          readinessProbe: {{- toYaml .Values.containers.app.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources: {{- toYaml .Values.resources.app | nindent 12 }}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          {{- if or .Values.envVars.app.config .Values.envVars.app.secret }}
+          envFrom:
+          {{- if .Values.envVars.app.config }}
+            - configMapRef:
+                name: {{ tpl .Values.envVars.app.config . }}
+          {{- end }}
+          {{- if .Values.envVars.app.secret }}
+            - secretRef:
+                name: {{ tpl .Values.envVars.app.secret . }}
+          {{- end }}
+          {{- end }}
+
+
+        - name: {{ include "fluentName" . }}
+          image: {{ include "imagePath" (list $ . "fluentBit") }}
+          imagePullPolicy: Always
+          {{- if or .Values.envVars.fluentBit.config .Values.envVars.fluentBit.secret }}
+          {{- if .Values.containers.fluentBit.diagnosticMode.enabled }}
+          livenessProbe: {{- toYaml .Values.containers.fluentBit.livenessProbe | nindent 12 }}
+          readinessProbe: {{- toYaml .Values.containers.fluentBit.readinessProbe | nindent 12 }}
+          {{- end }}
+          envFrom:
+          {{- if .Values.envVars.fluentBit.config }}
+            - configMapRef:
+                name: {{ tpl .Values.envVars.fluentBit.config . }}
+          {{- end }}
+          {{- end }}
+          env:
+            {{- if .Values.envVars.fluentBit.secret }}
+            - name: CLIENT_KAFKA_CERT_KEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ tpl .Values.envVars.fluentBit.secret . }}
+                  key: client-kafka-cert-key-password
+            {{- end }}
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          volumeMounts: {{- include "volumeMount" (list $ . "fluent-bit") | nindent 12 }}
+          ports:
+            - containerPort: {{ .Values.containers.fluentBit.port | default 2020 }}
+          resources: {{- toYaml .Values.resources.fluentBit | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: [ "sh", "-c", "while nc -zw2 {{ include "appName" . }} {{ .Values.containers.app.port }}; do sleep 1; done; sleep 5" ]
+
+
+        - name: {{ include "jaegerName" . }}
+          image: {{ include "imagePath" (list $ . "jaeger") }}
+          {{- if .Values.containers.jaeger.diagnosticMode.enabled }}
+          livenessProbe: {{- toYaml .Values.containers.jaeger.livenessProbe | nindent 12 }}
+          readinessProbe: {{- toYaml .Values.containers.jaeger.readinessProbe | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: zk-compact-trft
+              containerPort: PORT_NUMBER
+              protocol: UDP
+            - name: config-rest
+              containerPort: PORT_NUMBER
+              protocol: TCP
+            - name: jg-compact-trft
+              containerPort: PORT_NUMBER
+              protocol: UDP
+            - name: jg-binary-trft
+              containerPort: PORT_NUMBER
+              protocol: UDP
+            - name: admin-http
+              containerPort: PORT_NUMBER
+              protocol: TCP
+          {{- if .Values.envVars.jaeger.config }}
+          envFrom:
+          {{- if .Values.envVars.jaeger.config }}
+            - configMapRef:
+                name: {{ tpl .Values.envVars.jaeger.config . }}
+          {{- end }}
+          {{- end }}
+          args:
+            - --reporter.grpc.host-port={{ .Values.containers.jaeger.reportedGrpcHostPort }}
+            - --reporter.type={{ .Values.containers.jaeger.reportedType }}
+            - "--log-level=debug"
+          volumeMounts: {{- include "volumeMount" (list $ . "jaeger-agent") | nindent 12 }}
+          resources: {{- toYaml .Values.resources.jaeger | nindent 12 }}
+          imagePullPolicy: IfNotPresent
+      dnsConfig:
+        options:
+          - name: single-request
+      dnsPolicy: {{ .Values.pod.dnsPolicy | default "ClusterFirst" }}
+      restartPolicy: {{ .Values.pod.restartPolicy | default "Always" }}
+      schedulerName: {{ .Values.pod.schedulerName | default "default-scheduler" }}
+      securityContext: { }
+      terminationGracePeriodSeconds: {{ .Values.pod.terminationGracePeriodSeconds | default 30 }}

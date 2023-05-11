@@ -1,0 +1,45 @@
+resources:
+  app:
+    requests:
+      memory: 1000Mi
+      cpu: 350m
+    limits:
+      memory: 1000Mi
+      cpu: 350m
+  fluentBit:
+    requests:
+      memory: 300Mi
+      cpu: 200m
+    limits:
+      memory: 300Mi
+      cpu: 200m
+  jaeger:
+    requests:
+      memory: 100Mi
+      cpu: 100m
+    limits:
+      memory: 100Mi
+      cpu: 100m
+
+
+volumes:
+  app:
+    type: config
+    mountPath: 
+      app:
+    items:
+      key: logback.xml
+      path: logback.xml
+    subPath: {}
+  fluent-bit:
+    type: secret
+    mountPath: 
+      app:
+      fluent-bit:
+    subPath: {}
+  jaeger-agent:
+    type: secret
+    mountPath: 
+      app:
+      jaeger-agent:
+    subPath: {}

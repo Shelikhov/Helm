@@ -1,0 +1,140 @@
+projectName: '{project_name}'
+endpoint: "{{ .Chart.Name }}.{{ .Release.Namespace }}.apps.{server}.{domain}"
+
+
+images:
+  app:
+    registryUrl: "{repository}"
+    image: "{{ .Chart.Name }}"
+    version: ""
+  fluentBit:
+    registryUrl: "{{ .Values.images.app.registryUrl }}"
+    image: "fluent"
+    version: "1.0.0"
+  jaeger:
+    registryUrl: "{{ .Values.images.app.registryUrl }}"
+    image: "tracing"
+    version: "1.0.0"
+
+
+envVars:
+  app:
+    config: "{{ .Chart.Name }}-config"
+    secret: "{{ .Chart.Name }}-secret"
+  fluentBit:
+    config: "{{ .Chart.Name }}-{{ .Values.containers.fluentBit.name }}-config"
+    secret: "{{ .Chart.Name }}-{{ .Values.containers.fluentBit.name }}-secret"
+  jaeger:
+    config: "{{ .Chart.Name }}-{{ .Values.containers.jaeger.name }}-config"
+    secret: "{{ .Chart.Name }}-{{ .Values.containers.jaeger.name }}-secret"
+
+
+containers:
+  app:
+    springProfiles: openshift
+    prometheus:
+      enabled: true
+      metricPath: '/prometheus'
+    port: 8080
+    protocol: TCP
+    serviceType: ClusterIP
+    diagnosticMode:
+      enabled: true
+    livenessProbe:
+      failureThreshold: 5
+      httpGet:
+        path: /health/liveness
+        port: 8080
+        scheme: HTTP
+      initialDelaySeconds: 360
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 15
+    readinessProbe:
+      failureThreshold: 10
+      httpGet:
+        path: /health/readiness
+        port: 8080
+        scheme: HTTP
+      initialDelaySeconds: 360
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 15
+  fluentBit:
+    name: fluent-bit
+    logbackPath:
+    port: 2020
+    protocol: TCP
+    diagnosticMode:
+      enabled: true
+    livenessProbe:
+      failureThreshold: 5
+      httpGet:
+        path: /api/v1/health
+        port: 2020
+        scheme: HTTP
+      initialDelaySeconds: 40
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 10
+    readinessProbe:
+      failureThreshold: 10
+      httpGet:
+        path: /api/v1/health
+        port: 2020
+        scheme: HTTP
+      initialDelaySeconds: 40
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 10
+    env:
+      KAFKA_BROKER: '...'
+      KAFKA_TOPICS: '...'
+      ES_INDEX_NAME_SUFFIX: "{{ .Release.Namespace }}.springboot-logback"
+      LOG_LEVEL: 'DEBUG'
+  jaeger:
+    name: jaeger-agent
+    reportedType: grpc
+    reportedGrpcHostPort:
+    port: 
+    protocol: TCP
+    diagnosticMode:
+      enabled: true
+    livenessProbe:
+      failureThreshold: 5
+      httpGet:
+        path: /
+        port: 
+        scheme: HTTP
+      initialDelaySeconds: 40
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 10
+    readinessProbe:
+      failureThreshold: 10
+      httpGet:
+        path: /
+        port:
+        scheme: HTTP
+      initialDelaySeconds: 40
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 10
+    env:
+      TLS_ENABLED:
+
+
+pod:
+  replicas: 1
+  revisionLimit: 10
+  progressDeadlineSeconds: 21600
+  strategy:
+    maxSurge: '25%'
+    maxUnavailable: '25%'
+    type: RollingUpdate
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  terminationGracePeriodSeconds: 30
+  tls: ...
+

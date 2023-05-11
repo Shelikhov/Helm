@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ tpl .Values.envVars.app.config . }}
+data: {{ toYaml .Values.appConfigData | nindent 2 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ tpl .Values.envVars.fluentBit.config . }}
+data: {{ tpl (toYaml .Values.containers.fluentBit.env) . | nindent 2 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ tpl .Values.envVars.jaeger.config . }}
+data: {{ toYaml .Values.containers.jaeger.env | nindent 2 }}

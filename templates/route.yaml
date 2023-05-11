@@ -1,0 +1,20 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: {{ include "appName" . }}
+  annotations:
+    haproxy.router.openshift.io/timeout: 360s
+  labels: {{- include "chartLabels" . | nindent 4 }}
+    app: {{ include "appName" . }}
+    name: {{ include "appName" . }}
+spec:
+  host: {{ tpl .Values.endpoint . }}
+  port:
+    targetPort: {{ .Values.containers.app.port }}-{{ .Values.containers.app.protocol | lower }}
+  tls: {{ toYaml .Values.pod.tls | nindent 4 }}
+  {{ toYaml .Values.secrets.app.tls | nindent 4 }}
+  to:
+    kind: Service
+    name: {{ include "appName" . }}
+    weight: 100
+  wildcardPolicy: None
